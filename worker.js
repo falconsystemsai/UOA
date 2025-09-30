@@ -625,27 +625,29 @@ function getHTML() {
         const sentiment = (row.side || '').toLowerCase();
         const sentimentClassMap = { bullish: 'badge-bullish', bearish: 'badge-bearish', neutral: 'badge-neutral' };
         const sentimentClass = sentimentClassMap[sentiment] || '';
+        const sentimentClassSuffix = sentimentClass ? ' ' + sentimentClass : '';
+        const normalizedSide = row.side ? String(row.side).toUpperCase() : '';
         const sentimentBadge = row.side
-          ? '<span class="badge' + (sentimentClass ? ' ' + sentimentClass : '') + '">' + escapeHtml(String(row.side).toUpperCase()) + '</span>'
+          ? '<span class="badge' + sentimentClassSuffix + '">' + escapeHtml(normalizedSide) + '</span>'
           : '';
         const sweepBadge = row.sweep ? '<span class="badge badge-sweep">Sweep</span>' : '';
-        return `<tr>
-            <td><span class="cell-inline"><span class="ticker">${escapeHtml(row.ticker || '-')}</span>${sweepBadge}</span></td>
-            <td>${sentimentBadge}</td>
-            <td>${escapeHtml(row.type || '-')}</td>
-            <td>${formatCurrency(row.premium)}</td>
-            <td>${formatNumber(row.strike)}</td>
-            <td>${escapeHtml(row.expiry || '-')}</td>
-            <td>${formatCurrency(row.trade_price)}</td>
-            <td>${formatNumber(row.quantity)}</td>
-            <td>${escapeHtml(row.time || '-')}</td>
-            <td>${formatCurrency(row.underlying_price)}</td>
-          </tr>`;
+        return '<tr>' +
+            '<td><span class="cell-inline"><span class="ticker">' + escapeHtml(row.ticker || '-') + '</span>' + sweepBadge + '</span></td>' +
+            '<td>' + sentimentBadge + '</td>' +
+            '<td>' + escapeHtml(row.type || '-') + '</td>' +
+            '<td>' + formatCurrency(row.premium) + '</td>' +
+            '<td>' + formatNumber(row.strike) + '</td>' +
+            '<td>' + escapeHtml(row.expiry || '-') + '</td>' +
+            '<td>' + formatCurrency(row.trade_price) + '</td>' +
+            '<td>' + formatNumber(row.quantity) + '</td>' +
+            '<td>' + escapeHtml(row.time || '-') + '</td>' +
+            '<td>' + formatCurrency(row.underlying_price) + '</td>' +
+          '</tr>';
       }).join('');
 
       pager.hidden = false;
-      const totalLabel = typeof payload?.count === 'number' ? ` of ${payload.count}` : '';
-      pagerInfo.textContent = `Page ${currentPage} • Showing ${rows.length}${totalLabel} results`;
+      const totalLabel = typeof payload?.count === 'number' ? ' of ' + payload.count : '';
+      pagerInfo.textContent = 'Page ' + currentPage + ' • Showing ' + rows.length + totalLabel + ' results';
       prevPageBtn.disabled = currentPage <= 1;
       nextPageBtn.disabled = rows.length < pageSize;
 
