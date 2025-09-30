@@ -1,26 +1,28 @@
 
 // Cloudflare Worker for Unusual Options Activity Viewer
 export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+/, "/");
-
-    if (path === "/" || path === "/index.html") {
-      return new Response(getHTML(), {
-        headers: { "content-type": "text/html; charset=utf-8" }
-      });
-    }
-
-    if (path === "/api/uoa") {
-      if (request.method !== "GET") {
-        return json({ error: "Method not allowed" }, 405, corsHeaders());
-      }
-      return handleUOARequest(url, env, ctx);
-    }
-
-    return new Response("Not found", { status: 404 });
-  }
+  fetch: handleFetch
 };
+
+async function handleFetch(request, env, ctx) {
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+/, "/");
+
+  if (path === "/" || path === "/index.html") {
+    return new Response(getHTML(), {
+      headers: { "content-type": "text/html; charset=utf-8" }
+    });
+  }
+
+  if (path === "/api/uoa") {
+    if (request.method !== "GET") {
+      return json({ error: "Method not allowed" }, 405, corsHeaders());
+    }
+    return handleUOARequest(url, env, ctx);
+  }
+
+  return new Response("Not found", { status: 404 });
+}
 
 function corsHeaders() {
   return {
@@ -71,15 +73,28 @@ async function handleUOARequest(url, env, ctx) {
     const data = await upstream.json().catch(() => ({ error: "Upstream decode failed" }));
     const normalized = normalizeBenzingaPayload(data);
 
-    res = json({ ok: !data.error, source_status: upstream.status, page: Number(page),
-      page_size: Number(pageSize), count: normalized.length, results: normalized
-    }, upstream.ok ? 200 : upstream.status, corsHeaders());
+    const payload = {
+      ok: !data.error,
+      source_status: upstream.status,
+      page: Number(page),
+      page_size: Number(pageSize),
+      count: normalized.length,
+      results: normalized
+    };
+    const status = upstream.ok ? 200 : upstream.status;
+    const headers = {
+      "content-type": "application/json; charset=utf-8",
+      ...corsHeaders()
+    };
+    const body = JSON.stringify(payload);
+    res = new Response(body, { status, headers });
 
     if (upstream.ok) {
-      ctx.waitUntil(cache.put(cacheKey, new Response(res.body, {
-        headers: { ...Object.fromEntries(res.headers), "cache-control": `public, max-age=${ttl}` },
-        status: res.status
-      })));
+      const cachedCopy = new Response(body, {
+        status,
+        headers: { ...headers, "cache-control": `public, max-age=${ttl}` }
+      });
+      ctx.waitUntil(cache.put(cacheKey, cachedCopy));
     }
   }
   return res;
@@ -118,3 +133,7 @@ function getHTML() {
   <body><h1>Unusual Options Activity</h1><p>Use /api/uoa endpoint with query params.</p></body></html>`;
 }
 // Cloudflare Worker code goes here (see previous full script)
+
+addEventListener("fetch", (event) => {
+  event.respondWith(handleFetch(event.request, event.target ?? {}, event));
+});
