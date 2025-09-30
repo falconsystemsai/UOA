@@ -628,7 +628,7 @@ function getHTML() {
         const sentimentClassSuffix = sentimentClass ? ' ' + sentimentClass : '';
         const normalizedSide = row.side ? String(row.side).toUpperCase() : '';
         const sentimentBadge = row.side
-          ? `<span class="badge${sentimentClassSuffix}">${escapeHtml(normalizedSide)}</span>`
+          ? '<span class="badge' + sentimentClassSuffix + '">' + escapeHtml(normalizedSide) + '</span>'
           : '';
         const sweepBadge = row.sweep ? '<span class="badge badge-sweep">Sweep</span>' : '';
         return `<tr>
