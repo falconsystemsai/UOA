@@ -625,7 +625,7 @@ function getHTML() {
         const sentiment = (row.side || '').toLowerCase();
         const sentimentClassMap = { bullish: 'badge-bullish', bearish: 'badge-bearish', neutral: 'badge-neutral' };
         const sentimentClass = sentimentClassMap[sentiment] || '';
-        const sentimentClassSuffix = sentimentClass ? ` ${sentimentClass}` : '';
+        const sentimentClassSuffix = sentimentClass ? ' ' + sentimentClass : '';
         const normalizedSide = row.side ? String(row.side).toUpperCase() : '';
         const sentimentBadge = row.side
           ? `<span class="badge${sentimentClassSuffix}">${escapeHtml(normalizedSide)}</span>`
