@@ -1,0 +1,7 @@
+name = "uoa-viewer"
+main = "worker.js"
+compatibility_date = "2024-05-01"
+
+[vars]
+BENZINGA_BASE_URL = "https://api.benzinga.com/api/v1/signal/option_activity"
+CACHE_TTL_SECONDS = "30"
