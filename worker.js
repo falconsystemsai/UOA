@@ -46,16 +46,23 @@ async function handleUOARequest(url, env, ctx) {
   const params = url.searchParams;
   const tickers = (params.get("tickers") || "").trim();
   const sentiment = (params.get("sentiment") || "").trim();
-  const minPremium = params.get("min_premium");
-  const sweepOnly = params.get("sweep_only") === "true";
-  const page = params.get("page") || "1";
-  const pageSize = params.get("page_size") || "50";
+  const minPremium = params.get("min_premium") ?? params.get("min_total_trade_value");
+  const sweepOnlyParam = params.get("sweep_only") ?? params.get("sweepOnly") ?? "false";
+  const sweepOnly = String(sweepOnlyParam).toLowerCase() === "true";
+  const page = params.get("page") || params.get("page_number") || "1";
+  const pageSize =
+    params.get("page_size") ||
+    params.get("pagesize") ||
+    params.get("pageSize") ||
+    params.get("limit") ||
+    "50";
   const dateFrom = params.get("date_from") || "";
   const dateTo = params.get("date_to") || "";
 
+  const useHeaderAuth = env.BENZINGA_USE_AUTH_HEADER === "true";
   const apiUrl = buildBenzingaURL({
     baseUrl: env.BENZINGA_BASE_URL || "https://api.benzinga.com/api/v1/signal/option_activity",
-    token: env.BENZINGA_API_KEY,
+    token: useHeaderAuth ? undefined : env.BENZINGA_API_KEY,
     tickers, sentiment, minPremium, sweepOnly, page, pageSize, dateFrom, dateTo
   });
 
@@ -69,18 +76,28 @@ async function handleUOARequest(url, env, ctx) {
 
   let res = await cache.match(cacheKey);
   if (!res) {
-    const upstream = await fetch(apiUrl.toString(), { cf: { cacheTtl: 0, cacheEverything: false } });
+    const upstream = await fetch(apiUrl.toString(), {
+      cf: { cacheTtl: 0, cacheEverything: false },
+      headers: buildBenzingaHeaders(env)
+    });
     const data = await upstream.json().catch(() => ({ error: "Upstream decode failed" }));
-    const normalized = normalizeBenzingaPayload(data);
+    const normalized = upstream.ok ? normalizeBenzingaPayload(data) : [];
 
-    const payload = {
-      ok: !data.error,
-      source_status: upstream.status,
-      page: Number(page),
-      page_size: Number(pageSize),
-      count: normalized.length,
-      results: normalized
-    };
+    const payload = upstream.ok
+      ? {
+          ok: true,
+          source_status: upstream.status,
+          page: Number(page),
+          page_size: Number(pageSize),
+          count: normalized.length,
+          results: normalized
+        }
+      : {
+          ok: false,
+          source_status: upstream.status,
+          error: extractUpstreamError(data, upstream.statusText),
+          error_details: typeof data === "object" ? data : { raw: data }
+        };
     const status = upstream.ok ? 200 : upstream.status;
     const headers = {
       "content-type": "application/json; charset=utf-8",
@@ -100,9 +117,21 @@ async function handleUOARequest(url, env, ctx) {
   return res;
 }
 
+function buildBenzingaHeaders(env) {
+  const headers = new Headers();
+  headers.set("accept", "application/json");
+  headers.set("user-agent", env.BENZINGA_USER_AGENT || "UOA Worker/1.0");
+  if (env.BENZINGA_API_KEY && env.BENZINGA_USE_AUTH_HEADER === "true") {
+    headers.set("authorization", `Bearer ${env.BENZINGA_API_KEY}`);
+  }
+  return headers;
+}
+
 function buildBenzingaURL({ baseUrl, token, tickers, sentiment, minPremium, sweepOnly, page, pageSize, dateFrom, dateTo }) {
   const u = new URL(baseUrl);
-  u.searchParams.set("token", token);
+  if (token) {
+    u.searchParams.set("token", token);
+  }
   if (tickers) u.searchParams.set("tickers", tickers);
   if (sentiment) u.searchParams.set("sentiment", sentiment);
   if (minPremium) u.searchParams.set("min_total_trade_value", String(minPremium));
@@ -126,6 +155,28 @@ function normalizeBenzingaPayload(data) {
     strike: Number(row.strike || 0), expiry: row.expiration_date || "", time: row.time || "",
     iv: Number(row.iv || 0), underlying_price: Number(row.underlying_price || 0)
   }));
+}
+
+function extractUpstreamError(data, fallback) {
+  if (!data || typeof data !== "object") {
+    return fallback || "Upstream request failed";
+  }
+
+  if (typeof data.error === "string" && data.error) {
+    return data.error;
+  }
+
+  if (typeof data.message === "string" && data.message) {
+    return data.message;
+  }
+
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    const first = data.errors[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first.message === "string") return first.message;
+  }
+
+  return fallback || "Upstream request failed";
 }
 
 function getHTML() {
