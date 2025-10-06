@@ -167,6 +167,7 @@ function normalizeBenzingaPayload(data) {
     const premium = Number(
       row?.total_trade_value ??
         row?.total_cost ??
+        row?.cost_basis ??
         row?.premium ??
         row?.notional_value ??
         row?.notional ??
