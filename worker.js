@@ -144,17 +144,89 @@ function buildBenzingaURL({ baseUrl, token, tickers, sentiment, minPremium, swee
 }
 
 function normalizeBenzingaPayload(data) {
-  const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
-  return rows.map((row) => ({
-    id: row.id ?? `${row.ticker || row.underlying_ticker}-${row.trade_time || Date.now()}`,
-    ticker: row.ticker || row.underlying_ticker || "", type: row.option_type || "", side: row.sentiment || "",
-    sweep: Boolean(row.sweep ?? row.is_sweep),
-    premium: Number(row.total_trade_value || row.premium || 0),
-    trade_price: Number(row.price || row.trade_price || 0),
-    quantity: Number(row.size || row.quantity || 0),
-    strike: Number(row.strike || 0), expiry: row.expiration_date || "", time: row.time || "",
-    iv: Number(row.iv || 0), underlying_price: Number(row.underlying_price || 0)
-  }));
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.option_activity)
+    ? data.option_activity
+    : Array.isArray(data?.data?.option_activity)
+    ? data.data.option_activity
+    : Array.isArray(data?.data)
+    ? data.data
+    : [];
+
+  return rows.map((row) => {
+    const ticker = row?.ticker || row?.symbol || row?.underlying_symbol || row?.underlying_ticker || "";
+    const type = row?.put_call || row?.option_type || "";
+    const side = row?.sentiment || row?.side || "";
+    const sweepValue = row?.sweep ?? row?.is_sweep ?? row?.order_type ?? row?.option_activity_type;
+    const sweep = typeof sweepValue === "boolean"
+      ? sweepValue
+      : typeof sweepValue === "string"
+      ? sweepValue.toLowerCase().includes("sweep")
+      : false;
+    const premium = Number(
+      row?.total_trade_value ??
+        row?.total_cost ??
+        row?.premium ??
+        row?.notional_value ??
+        row?.notional ??
+        0
+    );
+    const tradePrice = Number(row?.price ?? row?.trade_price ?? row?.fill_price ?? 0);
+    const quantity = Number(row?.size ?? row?.quantity ?? row?.volume ?? 0);
+    const strike = Number(row?.strike_price ?? row?.strike ?? 0);
+    const expiry = row?.date_expiration || row?.expiration_date || row?.expiry || "";
+    const date = row?.date || row?.trade_date || "";
+    const time = row?.time || row?.trade_time || "";
+    const timeDisplay = buildDisplayTime(date, time, row?.updated);
+    const iv = Number(row?.iv ?? row?.implied_volatility ?? 0);
+    const underlyingPrice = Number(
+      row?.underlying_price ?? row?.underlying_price_last ?? row?.underlying_last ?? 0
+    );
+    const id =
+      row?.id ||
+      row?.identifier ||
+      row?.option_symbol ||
+      `${ticker || "flow"}-${time || row?.updated || Date.now()}`;
+
+    return {
+      id,
+      ticker,
+      type,
+      side,
+      sweep: Boolean(sweep),
+      premium,
+      trade_price: tradePrice,
+      quantity,
+      strike,
+      expiry,
+      time: timeDisplay,
+      iv,
+      underlying_price: underlyingPrice
+    };
+  });
+}
+
+function buildDisplayTime(date, time, updated) {
+  if (date && time) {
+    return `${date} ${time}`.trim();
+  }
+  if (time) {
+    return time;
+  }
+  if (date) {
+    return date;
+  }
+  const epochSeconds = Number(updated);
+  if (!epochSeconds) {
+    return "";
+  }
+  const ms = epochSeconds > 1e12 ? epochSeconds : epochSeconds * 1000;
+  const dateObj = new Date(ms);
+  if (Number.isNaN(dateObj.getTime())) {
+    return "";
+  }
+  return dateObj.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
 }
 
 function extractUpstreamError(data, fallback) {
