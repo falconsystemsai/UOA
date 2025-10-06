@@ -164,26 +164,39 @@ function normalizeBenzingaPayload(data) {
       : typeof sweepValue === "string"
       ? sweepValue.toLowerCase().includes("sweep")
       : false;
-    const premium = Number(
+    const quantity = parseNumber(row?.size ?? row?.quantity ?? row?.volume ?? row?.contracts) || 0;
+    const contractMultiplier =
+      parseNumber(
+        row?.contract_multiplier ??
+          row?.contractMultiplier ??
+          row?.option_multiplier ??
+          row?.multiplier ??
+          row?.contract_size ??
+          row?.contractSize
+      ) || 100;
+    let premium = parseNumber(
       row?.total_trade_value ??
         row?.total_cost ??
-        row?.cost_basis ??
         row?.premium ??
         row?.notional_value ??
-        row?.notional ??
-        0
+        row?.notional
     );
-    const tradePrice = Number(row?.price ?? row?.trade_price ?? row?.fill_price ?? 0);
-    const quantity = Number(row?.size ?? row?.quantity ?? row?.volume ?? 0);
-    const strike = Number(row?.strike_price ?? row?.strike ?? 0);
+    const costBasis = parseNumber(row?.cost_basis ?? row?.costBasis ?? row?.basis);
+    if ((!Number.isFinite(premium) || premium <= 0) && Number.isFinite(costBasis) && costBasis > 0 && quantity > 0) {
+      const multiplier = contractMultiplier > 0 ? contractMultiplier : 100;
+      premium = costBasis * quantity * multiplier;
+    }
+    if (!Number.isFinite(premium)) {
+      premium = 0;
+    }
+    const tradePrice = parseNumber(row?.price ?? row?.trade_price ?? row?.fill_price);
+    const strike = parseNumber(row?.strike_price ?? row?.strike);
     const expiry = row?.date_expiration || row?.expiration_date || row?.expiry || "";
     const date = row?.date || row?.trade_date || "";
     const time = row?.time || row?.trade_time || "";
     const timeDisplay = buildDisplayTime(date, time, row?.updated);
-    const iv = Number(row?.iv ?? row?.implied_volatility ?? 0);
-    const underlyingPrice = Number(
-      row?.underlying_price ?? row?.underlying_price_last ?? row?.underlying_last ?? 0
-    );
+    const iv = parseNumber(row?.iv ?? row?.implied_volatility);
+    const underlyingPrice = parseNumber(row?.underlying_price ?? row?.underlying_price_last ?? row?.underlying_last);
     const id =
       row?.id ||
       row?.identifier ||
@@ -206,6 +219,25 @@ function normalizeBenzingaPayload(data) {
       underlying_price: underlyingPrice
     };
   });
+}
+
+function parseNumber(value) {
+  if (value === null || value === undefined) {
+    return NaN;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : NaN;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/[$,\s]/g, "");
+    if (!normalized) {
+      return NaN;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 function buildDisplayTime(date, time, updated) {
