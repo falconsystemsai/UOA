@@ -262,12 +262,16 @@ function getHTML() {
   <style>
     :root {
       color-scheme: light dark;
-      --bg-gradient: radial-gradient(circle at top left, #1f5ff5, #111827 55%);
-      --panel-bg: rgba(17, 24, 39, 0.82);
-      --panel-border: rgba(255, 255, 255, 0.12);
-      --accent: #38bdf8;
-      --accent-strong: #0ea5e9;
-      --text-muted: rgba(255, 255, 255, 0.7);
+      --bg-gradient:
+        radial-gradient(circle at 12% 12%, rgba(147, 51, 234, 0.95) 0%, rgba(15, 23, 42, 0.92) 45%),
+        radial-gradient(circle at 88% 8%, rgba(236, 72, 153, 0.85) 0%, rgba(15, 23, 42, 0.94) 55%),
+        linear-gradient(160deg, #0f172a, #020617 70%);
+      --panel-bg: rgba(15, 23, 42, 0.78);
+      --panel-border: rgba(236, 72, 153, 0.28);
+      --accent: #f472b6;
+      --accent-strong: #e11d48;
+      --text-muted: rgba(248, 250, 252, 0.72);
+      --glow: rgba(236, 72, 153, 0.4);
     }
 
     * {
@@ -284,6 +288,34 @@ function getHTML() {
       align-items: stretch;
       justify-content: center;
       padding: 32px 20px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      opacity: 0.85;
+      transform-origin: center;
+      animation: pulse 16s ease-in-out infinite;
+      z-index: 0;
+    }
+
+    body::before {
+      background:
+        radial-gradient(circle at 20% 20%, rgba(236, 72, 153, 0.22), transparent 45%),
+        radial-gradient(circle at 80% 15%, rgba(129, 140, 248, 0.24), transparent 40%);
+    }
+
+    body::after {
+      background:
+        radial-gradient(circle at 50% 85%, rgba(244, 114, 182, 0.18), transparent 48%),
+        linear-gradient(120deg, rgba(56, 189, 248, 0.14), transparent 65%);
+      animation-delay: -8s;
     }
 
     .app {
@@ -297,13 +329,19 @@ function getHTML() {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      position: relative;
+      z-index: 1;
     }
 
     h1 {
       font-size: clamp(2rem, 4vw, 2.8rem);
       margin: 0;
-      letter-spacing: 0.02em;
-      text-shadow: 0 14px 32px rgba(8, 47, 73, 0.66);
+      letter-spacing: 0.04em;
+      color: #fde4ff;
+      background: linear-gradient(115deg, #f472b6 0%, #c084fc 45%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      color: transparent;
+      text-shadow: 0 18px 42px rgba(236, 72, 153, 0.45);
     }
 
     header p {
@@ -311,15 +349,50 @@ function getHTML() {
       max-width: 720px;
       line-height: 1.6;
       color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    header::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -10px;
+      width: 160px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(244, 114, 182, 0.8), transparent);
     }
 
     .panel {
       border-radius: 18px;
       border: 1px solid var(--panel-border);
       background: var(--panel-bg);
-      box-shadow: 0 30px 60px rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(12px);
+      box-shadow: 0 35px 60px rgba(15, 23, 42, 0.55), 0 0 35px rgba(236, 72, 153, 0.18);
+      backdrop-filter: blur(14px);
       padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: inherit;
+      background: linear-gradient(140deg, rgba(236, 72, 153, 0.45), rgba(56, 189, 248, 0.25));
+      opacity: 0.35;
+      filter: blur(12px);
+      z-index: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .panel:hover::before {
+      opacity: 0.55;
+    }
+
+    .panel > * {
+      position: relative;
+      z-index: 1;
     }
 
     form {
@@ -377,19 +450,20 @@ function getHTML() {
     input[type="date"],
     select {
       border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(15, 23, 42, 0.74);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(15, 23, 42, 0.68);
       color: #f8fafc;
       padding: 12px;
       font-size: 1rem;
-      transition: border 0.2s ease, box-shadow 0.2s ease;
+      transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
     }
 
     input:focus,
     select:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.24);
+      box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.28);
+      transform: translateY(-1px);
     }
 
     .controls {
@@ -413,27 +487,29 @@ function getHTML() {
       border-radius: 999px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, filter 0.2s ease;
       background: linear-gradient(135deg, var(--accent), var(--accent-strong));
       color: #0f172a;
-      box-shadow: 0 16px 24px rgba(8, 145, 178, 0.35);
+      box-shadow: 0 18px 28px rgba(236, 72, 153, 0.35);
     }
 
     button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 22px 40px rgba(8, 145, 178, 0.45);
+      transform: translateY(-2px);
+      box-shadow: 0 24px 42px rgba(236, 72, 153, 0.45);
+      filter: brightness(1.05);
     }
 
     button.secondary {
-      background: transparent;
+      background: rgba(15, 23, 42, 0.7);
       color: var(--text-muted);
-      border: 1px solid rgba(148, 163, 184, 0.36);
+      border: 1px solid rgba(236, 72, 153, 0.32);
       box-shadow: none;
     }
 
     button.secondary:hover {
       border-color: var(--accent);
       color: #fff;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.4);
     }
 
     button:disabled {
@@ -445,7 +521,8 @@ function getHTML() {
 
     .status {
       font-size: 0.95rem;
-      color: var(--text-muted);
+      color: rgba(244, 240, 255, 0.7);
+      letter-spacing: 0.02em;
     }
 
     .summary {
@@ -453,16 +530,21 @@ function getHTML() {
       gap: 12px;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       margin-top: 12px;
+      position: relative;
+      z-index: 1;
     }
 
     .summary-card {
-      padding: 16px;
-      border-radius: 14px;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      background: rgba(15, 23, 42, 0.6);
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(244, 114, 182, 0.25);
+      background: linear-gradient(140deg, rgba(15, 23, 42, 0.72), rgba(67, 56, 202, 0.35));
       display: flex;
       flex-direction: column;
       gap: 8px;
+      box-shadow: 0 20px 36px rgba(15, 23, 42, 0.45);
+      position: relative;
+      overflow: hidden;
     }
 
     .summary-card span:first-child {
@@ -473,14 +555,16 @@ function getHTML() {
     }
 
     .summary-card strong {
-      font-size: 1.35rem;
+      font-size: 1.45rem;
+      color: #fdf4ff;
     }
 
     .table-container {
       overflow-x: auto;
       border-radius: 18px;
       border: 1px solid var(--panel-border);
-      background: rgba(15, 23, 42, 0.7);
+      background: rgba(15, 23, 42, 0.62);
+      box-shadow: inset 0 1px 0 rgba(236, 72, 153, 0.14);
     }
 
     table {
@@ -490,7 +574,7 @@ function getHTML() {
     }
 
     thead {
-      background: rgba(15, 23, 42, 0.74);
+      background: linear-gradient(90deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.8));
     }
 
     th,
@@ -502,15 +586,15 @@ function getHTML() {
     }
 
     tbody tr:hover {
-      background: rgba(30, 64, 175, 0.2);
+      background: rgba(244, 114, 182, 0.18);
     }
 
     .badge {
       display: inline-flex;
       padding: 4px 10px;
       border-radius: 999px;
-      background: rgba(59, 130, 246, 0.2);
-      color: #bae6fd;
+      background: linear-gradient(135deg, rgba(244, 114, 182, 0.25), rgba(129, 140, 248, 0.35));
+      color: #fdf2f8;
       font-size: 0.75rem;
       letter-spacing: 0.05em;
       text-transform: uppercase;
@@ -579,6 +663,18 @@ function getHTML() {
       th,
       td {
         padding: 12px;
+      }
+    }
+
+    @keyframes pulse {
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 0.65;
+      }
+      50% {
+        transform: scale(1.04);
+        opacity: 0.9;
       }
     }
   </style>
