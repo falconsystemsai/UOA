@@ -46,7 +46,9 @@ async function handleUOARequest(url, env, ctx) {
   const params = url.searchParams;
   const tickers = (params.get("tickers") || "").trim();
   const sentiment = (params.get("sentiment") || "").trim();
-  const minPremium = params.get("min_premium") ?? params.get("min_total_trade_value");
+  const minPremiumRaw = params.get("min_premium") ?? params.get("min_total_trade_value");
+  const minPremiumFilter = normalizeNumericFilter(minPremiumRaw);
+  const minPremium = minPremiumFilter?.textValue;
   const sweepOnlyParam = params.get("sweep_only") ?? params.get("sweepOnly") ?? "false";
   const sweepOnly = String(sweepOnlyParam).toLowerCase() === "true";
   const page = params.get("page") || params.get("page_number") || "1";
@@ -63,7 +65,14 @@ async function handleUOARequest(url, env, ctx) {
   const apiUrl = buildBenzingaURL({
     baseUrl: env.BENZINGA_BASE_URL || "https://api.benzinga.com/api/v1/signal/option_activity",
     token: useHeaderAuth ? undefined : env.BENZINGA_API_KEY,
-    tickers, sentiment, minPremium, sweepOnly, page, pageSize, dateFrom, dateTo
+    tickers,
+    sentiment,
+    minPremium,
+    sweepOnly,
+    page,
+    pageSize,
+    dateFrom,
+    dateTo
   });
 
   if (!env.BENZINGA_API_KEY) {
@@ -82,12 +91,8 @@ async function handleUOARequest(url, env, ctx) {
     });
     const data = await upstream.json().catch(() => ({ error: "Upstream decode failed" }));
     const normalized = upstream.ok ? normalizeBenzingaPayload(data) : [];
-    const minPremiumValue = Number(minPremium);
-    const hasMinPremiumFilter =
-      minPremium !== undefined &&
-      minPremium !== null &&
-      String(minPremium).trim() !== "" &&
-      Number.isFinite(minPremiumValue);
+    const minPremiumValue = minPremiumFilter?.numericValue;
+    const hasMinPremiumFilter = Number.isFinite(minPremiumValue);
     const filtered = hasMinPremiumFilter
       ? normalized.filter((row) => Number.isFinite(row.premium) && row.premium >= minPremiumValue)
       : normalized;
@@ -134,6 +139,29 @@ function buildBenzingaHeaders(env) {
     headers.set("authorization", `Bearer ${env.BENZINGA_API_KEY}`);
   }
   return headers;
+}
+
+function normalizeNumericFilter(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const cleaned = trimmed.replace(/[^0-9.+-]/g, "");
+  if (!cleaned || /^[-+]?$/u.test(cleaned)) {
+    return null;
+  }
+
+  const numericValue = Number(cleaned);
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  return { numericValue, textValue: cleaned };
 }
 
 function buildBenzingaURL({ baseUrl, token, tickers, sentiment, minPremium, sweepOnly, page, pageSize, dateFrom, dateTo }) {
