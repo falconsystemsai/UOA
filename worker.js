@@ -175,6 +175,14 @@ function normalizeBenzingaPayload(data) {
     );
     const tradePrice = Number(row?.price ?? row?.trade_price ?? row?.fill_price ?? 0);
     const quantity = Number(row?.size ?? row?.quantity ?? row?.volume ?? 0);
+    const openInterest = Number(
+      row?.open_interest ??
+        row?.open_interest_prior ??
+        row?.previous_open_interest ??
+        row?.openInterest ??
+        row?.oi ??
+        0
+    );
     const strike = Number(row?.strike_price ?? row?.strike ?? 0);
     const expiry = row?.date_expiration || row?.expiration_date || row?.expiry || "";
     const date = row?.date || row?.trade_date || "";
@@ -203,7 +211,8 @@ function normalizeBenzingaPayload(data) {
       expiry,
       time: timeDisplay,
       iv,
-      underlying_price: underlyingPrice
+      underlying_price: underlyingPrice,
+      open_interest: openInterest
     };
   });
 }
@@ -621,6 +630,12 @@ function getHTML() {
       color: #bbf7d0;
     }
 
+    .badge-volume-dominant {
+      background: rgba(248, 250, 252, 0.25);
+      color: #facc15;
+      box-shadow: 0 0 12px rgba(250, 204, 21, 0.35);
+    }
+
     .cell-inline {
       display: inline-flex;
       align-items: center;
@@ -756,12 +771,13 @@ function getHTML() {
               <th>Expiry</th>
               <th>Trade Price</th>
               <th>Qty</th>
+              <th>Open Interest</th>
               <th>Time</th>
               <th>Underlying</th>
             </tr>
           </thead>
           <tbody id="results">
-            <tr><td colspan="10" class="empty-state">Run a scan to explore live option flow.</td></tr>
+            <tr><td colspan="11" class="empty-state">Run a scan to explore live option flow.</td></tr>
           </tbody>
         </table>
       </div>
@@ -825,7 +841,7 @@ function getHTML() {
         renderResults(data);
       } catch (error) {
         status.textContent = 'Something went wrong: ' + error.message;
-        resultsBody.innerHTML = '<tr><td colspan="10" class="empty-state">Unable to load data.</td></tr>';
+        resultsBody.innerHTML = '<tr><td colspan="11" class="empty-state">Unable to load data.</td></tr>';
         summary.hidden = true;
       }
     }
@@ -834,7 +850,7 @@ function getHTML() {
       const rows = Array.isArray(payload?.results) ? payload.results : [];
       const currentPage = Number(payload?.page) || page;
       if (!rows.length) {
-        resultsBody.innerHTML = '<tr><td colspan="10" class="empty-state">No flow matched your filters. Try broadening them.</td></tr>';
+        resultsBody.innerHTML = '<tr><td colspan="11" class="empty-state">No flow matched your filters. Try broadening them.</td></tr>';
         pager.hidden = true;
         summary.hidden = true;
         status.textContent = 'No matches found. Tweak your filters and try again.';
@@ -851,6 +867,11 @@ function getHTML() {
           ? '<span class="badge' + sentimentClassSuffix + '">' + escapeHtml(normalizedSide) + '</span>'
           : '';
         const sweepBadge = row.sweep ? '<span class="badge badge-sweep">Sweep</span>' : '';
+        const quantityValue = Number(row.quantity || 0);
+        const openInterestValue = Number(row.open_interest || 0);
+        const oiBadge = quantityValue > openInterestValue && openInterestValue > 0
+          ? '<span class="badge badge-volume-dominant">Vol &gt; OI</span>'
+          : '';
         return '<tr>' +
             '<td><span class="cell-inline"><span class="ticker">' + escapeHtml(row.ticker || '-') + '</span>' + sweepBadge + '</span></td>' +
             '<td>' + sentimentBadge + '</td>' +
@@ -859,7 +880,8 @@ function getHTML() {
             '<td>' + formatNumber(row.strike) + '</td>' +
             '<td>' + escapeHtml(row.expiry || '-') + '</td>' +
             '<td>' + formatCurrency(row.trade_price) + '</td>' +
-            '<td>' + formatNumber(row.quantity) + '</td>' +
+            '<td><span class="cell-inline">' + formatNumber(row.quantity) + oiBadge + '</span></td>' +
+            '<td>' + formatNumber(row.open_interest) + '</td>' +
             '<td>' + escapeHtml(row.time || '-') + '</td>' +
             '<td>' + formatCurrency(row.underlying_price) + '</td>' +
           '</tr>';
@@ -891,8 +913,14 @@ function getHTML() {
     }
 
     function formatNumber(value) {
-      const number = Number(value || 0);
-      return number ? number.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-';
+      const number = Number(value);
+      if (!Number.isFinite(number)) {
+        return '-';
+      }
+      if (number === 0) {
+        return '0';
+      }
+      return number.toLocaleString(undefined, { maximumFractionDigits: 2 });
     }
 
     function escapeHtml(value) {
@@ -924,7 +952,7 @@ function getHTML() {
       page = 1;
       status.textContent = 'Ready to scan.';
       summary.hidden = true;
-      resultsBody.innerHTML = '<tr><td colspan="10" class="empty-state">Run a scan to explore live option flow.</td></tr>';
+      resultsBody.innerHTML = '<tr><td colspan="11" class="empty-state">Run a scan to explore live option flow.</td></tr>';
       pager.hidden = true;
     });
 
