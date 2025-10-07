@@ -54,6 +54,10 @@ async function handleUOARequest(url, env, ctx) {
   const volumeGtOiParam =
     params.get("volume_gt_oi") ?? params.get("volumeGtOi") ?? params.get("size_gt_oi") ?? "false";
   const volumeGtOi = String(volumeGtOiParam).toLowerCase() === "true";
+  const aggressiveBuyOnlyParam = params.get("aggressive_buy_only") ?? params.get("aggressiveBuyOnly") ?? "false";
+  const aggressiveBuyOnly = String(aggressiveBuyOnlyParam).toLowerCase() === "true";
+  const aggressiveSellOnlyParam = params.get("aggressive_sell_only") ?? params.get("aggressiveSellOnly") ?? "false";
+  const aggressiveSellOnly = String(aggressiveSellOnlyParam).toLowerCase() === "true";
   const page = params.get("page") || params.get("page_number") || "1";
   const pageSize =
     params.get("page_size") ||
@@ -85,6 +89,8 @@ async function handleUOARequest(url, env, ctx) {
   const cache = caches.default;
   const cacheKeyUrl = new URL(apiUrl.toString());
   cacheKeyUrl.searchParams.set("volume_gt_oi", volumeGtOi ? "true" : "false");
+  cacheKeyUrl.searchParams.set("aggressive_buy_only", aggressiveBuyOnly ? "true" : "false");
+  cacheKeyUrl.searchParams.set("aggressive_sell_only", aggressiveSellOnly ? "true" : "false");
   const cacheKey = new Request(cacheKeyUrl.toString(), { method: "GET" });
   const ttl = parseInt(env.CACHE_TTL_SECONDS || "30", 10);
 
@@ -109,14 +115,39 @@ async function handleUOARequest(url, env, ctx) {
         })
       : premiumFiltered;
 
+    const aggressionFiltered = volumeFiltered.filter((row) => {
+      const posInSpread = Number(
+        row?.pos_in_spread ??
+          row?.position_in_spread ??
+          row?.posInSpread ??
+          row?.positionInSpread
+      );
+      const hasPosInSpread = Number.isFinite(posInSpread);
+      const meetsAggressiveBuy = Boolean(row?.aggressive_buy) || row?.at_or_above_ask === true ||
+        (hasPosInSpread && posInSpread >= 0.75);
+      const meetsAggressiveSell = Boolean(row?.aggressive_sell) || row?.at_or_below_bid === true ||
+        (hasPosInSpread && posInSpread <= 0.25);
+
+      if (aggressiveBuyOnly && aggressiveSellOnly) {
+        return meetsAggressiveBuy || meetsAggressiveSell;
+      }
+      if (aggressiveBuyOnly) {
+        return meetsAggressiveBuy;
+      }
+      if (aggressiveSellOnly) {
+        return meetsAggressiveSell;
+      }
+      return true;
+    });
+
     const payload = upstream.ok
       ? {
           ok: true,
           source_status: upstream.status,
           page: Number(page),
           page_size: Number(pageSize),
-          count: volumeFiltered.length,
-          results: volumeFiltered
+          count: aggressionFiltered.length,
+          results: aggressionFiltered
         }
       : {
           ok: false,
@@ -247,6 +278,86 @@ function normalizeBenzingaPayload(data) {
       row?.option_symbol ||
       `${ticker || "flow"}-${time || row?.updated || Date.now()}`;
 
+    const posInSpreadCandidates = [
+      row?.pos_in_spread,
+      row?.posInSpread,
+      row?.position_in_spread,
+      row?.positionInSpread
+    ];
+    const posInSpread = extractFirstFiniteNumber(posInSpreadCandidates);
+
+    const priceRelationCandidates = [
+      row?.price_relation,
+      row?.price_relation_description,
+      row?.price_level,
+      row?.priceLevel,
+      row?.trade_price_relation,
+      row?.tradePriceRelation,
+      row?.trade_at,
+      row?.tradeAt,
+      row?.price_condition,
+      row?.priceCondition,
+      row?.price_condition_detail,
+      row?.priceConditionDetail
+    ];
+    const priceRelation = extractFirstString(priceRelationCandidates);
+    const priceRelationLower = priceRelation.toLowerCase();
+
+    const atOrAboveAskCandidates = [
+      row?.at_or_above_ask,
+      row?.atOrAboveAsk,
+      row?.at_ask,
+      row?.atAsk,
+      row?.above_ask,
+      row?.aboveAsk,
+      row?.is_at_ask,
+      row?.isAtAsk,
+      row?.is_above_ask,
+      row?.isAboveAsk
+    ];
+    const atOrBelowBidCandidates = [
+      row?.at_or_below_bid,
+      row?.atOrBelowBid,
+      row?.at_bid,
+      row?.atBid,
+      row?.below_bid,
+      row?.belowBid,
+      row?.is_at_bid,
+      row?.isAtBid,
+      row?.is_below_bid,
+      row?.isBelowBid
+    ];
+
+    let atOrAboveAsk = extractFirstBoolean(atOrAboveAskCandidates);
+    let atOrBelowBid = extractFirstBoolean(atOrBelowBidCandidates);
+
+    if (!atOrAboveAsk && priceRelationLower) {
+      if (
+        priceRelationLower.includes("at ask") ||
+        priceRelationLower.includes("above ask") ||
+        priceRelationLower.includes("ask side") ||
+        priceRelationLower.includes("over ask") ||
+        priceRelationLower.includes("take ask")
+      ) {
+        atOrAboveAsk = true;
+      }
+    }
+
+    if (!atOrBelowBid && priceRelationLower) {
+      if (
+        priceRelationLower.includes("at bid") ||
+        priceRelationLower.includes("below bid") ||
+        priceRelationLower.includes("bid side") ||
+        priceRelationLower.includes("under bid") ||
+        priceRelationLower.includes("hit bid")
+      ) {
+        atOrBelowBid = true;
+      }
+    }
+
+    const aggressiveBuy = Boolean(atOrAboveAsk) || (Number.isFinite(posInSpread) && posInSpread >= 0.75);
+    const aggressiveSell = Boolean(atOrBelowBid) || (Number.isFinite(posInSpread) && posInSpread <= 0.25);
+
     return {
       id,
       ticker,
@@ -261,9 +372,66 @@ function normalizeBenzingaPayload(data) {
       time: timeDisplay,
       iv,
       underlying_price: underlyingPrice,
-      open_interest: openInterest
+      open_interest: openInterest,
+      pos_in_spread: Number.isFinite(posInSpread) ? posInSpread : null,
+      price_relation: priceRelation,
+      at_or_above_ask: Boolean(atOrAboveAsk),
+      at_or_below_bid: Boolean(atOrBelowBid),
+      aggressive_buy: aggressiveBuy,
+      aggressive_sell: aggressiveSell
     };
   });
+}
+
+function extractFirstFiniteNumber(candidates) {
+  for (const value of candidates) {
+    const number = Number(value);
+    if (Number.isFinite(number)) {
+      return number;
+    }
+    if (typeof value === "string") {
+      const cleaned = value.replace(/[^0-9.+-]/g, "");
+      if (cleaned) {
+        const parsed = Number(cleaned);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractFirstString(candidates) {
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function extractFirstBoolean(candidates) {
+  for (const value of candidates) {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "number") {
+      if (value === 1) return true;
+      if (value === 0) return false;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) continue;
+      if (["true", "t", "yes", "y", "1"].includes(normalized)) {
+        return true;
+      }
+      if (["false", "f", "no", "n", "0"].includes(normalized)) {
+        return false;
+      }
+    }
+  }
+  return false;
 }
 
 function buildDisplayTime(date, time, updated) {
@@ -788,6 +956,17 @@ function getHTML() {
               <label for="volume_gt_oi">Size &gt; Open Interest</label>
             </div>
           </div>
+          <div class="checkbox-field">
+            <span class="checkbox-caption">Aggression Filters</span>
+            <div class="checkbox-control">
+              <input type="checkbox" name="aggressive_buy_only" id="aggressive_buy_only">
+              <label for="aggressive_buy_only">Aggressive buys only</label>
+            </div>
+            <div class="checkbox-control">
+              <input type="checkbox" name="aggressive_sell_only" id="aggressive_sell_only">
+              <label for="aggressive_sell_only">Aggressive sells only</label>
+            </div>
+          </div>
         </div>
 
         <div class="controls">
@@ -885,6 +1064,8 @@ function getHTML() {
 
       if (formData.get('sweep_only')) params.set('sweep_only', 'true');
       if (formData.get('volume_gt_oi')) params.set('volume_gt_oi', 'true');
+      if (formData.get('aggressive_buy_only')) params.set('aggressive_buy_only', 'true');
+      if (formData.get('aggressive_sell_only')) params.set('aggressive_sell_only', 'true');
 
       params.set('page', String(page));
       params.set('page_size', String(pageSize));
