@@ -298,7 +298,8 @@ function getHTML() {
       justify-content: center;
       padding: 32px 20px 48px;
       position: relative;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
 
     body::before,
