@@ -51,6 +51,9 @@ async function handleUOARequest(url, env, ctx) {
   const minPremium = minPremiumFilter?.textValue;
   const sweepOnlyParam = params.get("sweep_only") ?? params.get("sweepOnly") ?? "false";
   const sweepOnly = String(sweepOnlyParam).toLowerCase() === "true";
+  const volumeGtOiParam =
+    params.get("volume_gt_oi") ?? params.get("volumeGtOi") ?? params.get("size_gt_oi") ?? "false";
+  const volumeGtOi = String(volumeGtOiParam).toLowerCase() === "true";
   const page = params.get("page") || params.get("page_number") || "1";
   const pageSize =
     params.get("page_size") ||
@@ -80,7 +83,9 @@ async function handleUOARequest(url, env, ctx) {
   }
 
   const cache = caches.default;
-  const cacheKey = new Request(apiUrl.toString(), { method: "GET" });
+  const cacheKeyUrl = new URL(apiUrl.toString());
+  cacheKeyUrl.searchParams.set("volume_gt_oi", volumeGtOi ? "true" : "false");
+  const cacheKey = new Request(cacheKeyUrl.toString(), { method: "GET" });
   const ttl = parseInt(env.CACHE_TTL_SECONDS || "30", 10);
 
   let res = await cache.match(cacheKey);
@@ -93,9 +98,16 @@ async function handleUOARequest(url, env, ctx) {
     const normalized = upstream.ok ? normalizeBenzingaPayload(data) : [];
     const minPremiumValue = minPremiumFilter?.numericValue;
     const hasMinPremiumFilter = Number.isFinite(minPremiumValue);
-    const filtered = hasMinPremiumFilter
+    const premiumFiltered = hasMinPremiumFilter
       ? normalized.filter((row) => Number.isFinite(row.premium) && row.premium >= minPremiumValue)
       : normalized;
+    const volumeFiltered = volumeGtOi
+      ? premiumFiltered.filter((row) => {
+          const quantity = Number(row.quantity);
+          const openInterest = Number(row.open_interest);
+          return Number.isFinite(quantity) && Number.isFinite(openInterest) && quantity > openInterest;
+        })
+      : premiumFiltered;
 
     const payload = upstream.ok
       ? {
@@ -103,8 +115,8 @@ async function handleUOARequest(url, env, ctx) {
           source_status: upstream.status,
           page: Number(page),
           page_size: Number(pageSize),
-          count: filtered.length,
-          results: filtered
+          count: volumeFiltered.length,
+          results: volumeFiltered
         }
       : {
           ok: false,
@@ -769,6 +781,13 @@ function getHTML() {
               <label for="sweep_only">Sweep only</label>
             </div>
           </div>
+          <div class="checkbox-field">
+            <span class="checkbox-caption">Volume Signals</span>
+            <div class="checkbox-control">
+              <input type="checkbox" name="volume_gt_oi" id="volume_gt_oi">
+              <label for="volume_gt_oi">Size &gt; Open Interest</label>
+            </div>
+          </div>
         </div>
 
         <div class="controls">
@@ -865,6 +884,7 @@ function getHTML() {
       if (dateTo) params.set('date_to', dateTo);
 
       if (formData.get('sweep_only')) params.set('sweep_only', 'true');
+      if (formData.get('volume_gt_oi')) params.set('volume_gt_oi', 'true');
 
       params.set('page', String(page));
       params.set('page_size', String(pageSize));
