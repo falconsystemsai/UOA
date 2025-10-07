@@ -82,6 +82,15 @@ async function handleUOARequest(url, env, ctx) {
     });
     const data = await upstream.json().catch(() => ({ error: "Upstream decode failed" }));
     const normalized = upstream.ok ? normalizeBenzingaPayload(data) : [];
+    const minPremiumValue = Number(minPremium);
+    const hasMinPremiumFilter =
+      minPremium !== undefined &&
+      minPremium !== null &&
+      String(minPremium).trim() !== "" &&
+      Number.isFinite(minPremiumValue);
+    const filtered = hasMinPremiumFilter
+      ? normalized.filter((row) => Number.isFinite(row.premium) && row.premium >= minPremiumValue)
+      : normalized;
 
     const payload = upstream.ok
       ? {
@@ -89,8 +98,8 @@ async function handleUOARequest(url, env, ctx) {
           source_status: upstream.status,
           page: Number(page),
           page_size: Number(pageSize),
-          count: normalized.length,
-          results: normalized
+          count: filtered.length,
+          results: filtered
         }
       : {
           ok: false,
@@ -165,9 +174,9 @@ function normalizeBenzingaPayload(data) {
       ? sweepValue.toLowerCase().includes("sweep")
       : false;
     const premium = Number(
-      row?.total_trade_value ??
+      row?.cost_basis ??
+        row?.total_trade_value ??
         row?.total_cost ??
-        row?.cost_basis ??
         row?.premium ??
         row?.notional_value ??
         row?.notional ??
