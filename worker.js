@@ -303,6 +303,22 @@ function normalizeBenzingaPayload(data) {
     const priceRelation = extractFirstString(priceRelationCandidates);
     const priceRelationLower = priceRelation.toLowerCase();
 
+    const aggressorIndicatorCandidates = [
+      row?.aggressor_ind,
+      row?.aggressor_indicator,
+      row?.aggressorIndicator,
+      row?.aggressorInd,
+      row?.execution_side,
+      row?.executionSide,
+      row?.trade_side,
+      row?.tradeSide,
+      row?.price_at_execution,
+      row?.priceAtExecution
+    ];
+    const aggressorIndicator = extractFirstAggressorIndicator(aggressorIndicatorCandidates);
+    const aggressorIsAggressiveBuy = isAggressiveBuyIndicator(aggressorIndicator);
+    const aggressorIsAggressiveSell = isAggressiveSellIndicator(aggressorIndicator);
+
     const atOrAboveAskCandidates = [
       row?.at_or_above_ask,
       row?.atOrAboveAsk,
@@ -330,6 +346,14 @@ function normalizeBenzingaPayload(data) {
 
     let atOrAboveAsk = extractFirstBoolean(atOrAboveAskCandidates);
     let atOrBelowBid = extractFirstBoolean(atOrBelowBidCandidates);
+
+    if (!atOrAboveAsk && aggressorIsAggressiveBuy) {
+      atOrAboveAsk = true;
+    }
+
+    if (!atOrBelowBid && aggressorIsAggressiveSell) {
+      atOrBelowBid = true;
+    }
 
     if (!atOrAboveAsk && priceRelationLower) {
       if (
@@ -378,9 +402,102 @@ function normalizeBenzingaPayload(data) {
       at_or_above_ask: Boolean(atOrAboveAsk),
       at_or_below_bid: Boolean(atOrBelowBid),
       aggressive_buy: aggressiveBuy,
-      aggressive_sell: aggressiveSell
+      aggressive_sell: aggressiveSell,
+      aggressor_indicator: aggressorIndicator || null
     };
   });
+}
+
+function extractFirstAggressorIndicator(candidates) {
+  for (const value of candidates) {
+    const normalized = normalizeAggressorIndicator(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function normalizeAggressorIndicator(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+
+  const normalized = text
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toUpperCase();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const mapping = {
+    ATASK: "AT_ASK",
+    ASK: "AT_ASK",
+    AT_OR_ABOVE_ASK: "AT_ASK",
+    OVER_ASK: "ABOVE_ASK",
+    ABOVEASK: "ABOVE_ASK",
+    ABOVE_THE_ASK: "ABOVE_ASK",
+    LIFT: "AT_ASK",
+    LIFT_ASK: "AT_ASK",
+    TAKE: "AT_ASK",
+    TAKE_ASK: "AT_ASK",
+    ATBID: "AT_BID",
+    BID: "AT_BID",
+    HIT_BID: "AT_BID",
+    AT_OR_BELOW_BID: "AT_BID",
+    UNDER_BID: "BELOW_BID",
+    BELOWBID: "BELOW_BID",
+    BELOW_THE_BID: "BELOW_BID",
+    SELLER: "AT_BID",
+    BUYER: "AT_ASK",
+    MID: "AT_MIDPOINT",
+    ATMID: "AT_MIDPOINT",
+    AT_MID: "AT_MIDPOINT",
+    ATMIDPOINT: "AT_MIDPOINT"
+  };
+
+  return mapping[normalized] || normalized;
+}
+
+const AGGRESSIVE_BUY_INDICATORS = new Set([
+  "AT_ASK",
+  "ABOVE_ASK",
+  "AT_OR_ABOVE_ASK",
+  "OVER_ASK",
+  "BUYER"
+]);
+
+const AGGRESSIVE_SELL_INDICATORS = new Set([
+  "AT_BID",
+  "BELOW_BID",
+  "AT_OR_BELOW_BID",
+  "UNDER_BID",
+  "SELLER",
+  "HIT_BID"
+]);
+
+function isAggressiveBuyIndicator(value) {
+  if (!value) {
+    return false;
+  }
+  const normalized = normalizeAggressorIndicator(value);
+  return AGGRESSIVE_BUY_INDICATORS.has(normalized);
+}
+
+function isAggressiveSellIndicator(value) {
+  if (!value) {
+    return false;
+  }
+  const normalized = normalizeAggressorIndicator(value);
+  return AGGRESSIVE_SELL_INDICATORS.has(normalized);
 }
 
 function extractFirstFiniteNumber(candidates) {
